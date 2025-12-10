@@ -18,6 +18,65 @@ class TokenManager:
         self._lock = asyncio.Lock()
 
     # ========== Token CRUD ==========
+    
+    async def sync_token_from_st(self, st: str) -> dict:
+        """通过 ST 自动识别用户并更新/创建 Token"""
+        debug_logger.log_info(f"[SYNC] 收到 ST 同步请求")
+        
+        # 1. 尝试转换 ST -> AT 获取用户信息
+        try:
+            result = await self.flow_client.st_to_at(st)
+        except Exception as e:
+            raise ValueError(f"ST 无效或已过期: {str(e)}")
+
+        at = result.get("access_token")
+        user_info = result.get("user", {})
+        email = user_info.get("email")
+        
+        if not email:
+            raise ValueError("无法从 ST 获取邮箱信息")
+            
+        # 解析过期时间
+        from datetime import datetime
+        expires = result.get("expires")
+        at_expires = None
+        if expires:
+            try:
+                at_expires = datetime.fromisoformat(expires.replace('Z', '+00:00'))
+            except:
+                pass
+
+        # 2. 查找数据库中是否存在该邮箱
+        # 遍历所有 Token 匹配邮箱 (Token 数量少，性能无影响)
+        all_tokens = await self.db.get_all_tokens()
+        target_token = next((t for t in all_tokens if t.email == email), None)
+
+        if target_token:
+            # update: 更新现有 Token
+            debug_logger.log_info(f"[SYNC] 更新现有 Token: {email} (ID: {target_token.id})")
+            await self.update_token(
+                token_id=target_token.id,
+                st=st,
+                at=at,
+                at_expires=at_expires
+            )
+            return {
+                "action": "updated",
+                "id": target_token.id,
+                "email": email
+            }
+        else:
+            # create: 如果是新邮箱，自动创建
+            debug_logger.log_info(f"[SYNC] 创建新 Token: {email}")
+            new_token = await self.add_token(
+                st=st,
+                remark="自动同步创建"
+            )
+            return {
+                "action": "created",
+                "id": new_token.id,
+                "email": email
+            }
 
     async def get_all_tokens(self) -> List[Token]:
         """Get all tokens"""
