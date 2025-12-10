@@ -461,7 +461,7 @@ class GenerationHandler:
             # 返回结果
             if stream:
                 yield self._create_stream_chunk(
-                    f"![Generated Image]({local_url})",
+                    f"🎨Finished!\n![Generated Image]({local_url})",
                     finish_reason="stop"
                 )
             else:
@@ -803,7 +803,7 @@ class GenerationHandler:
             if media_type == "video":
                 formatted_content = f"```html\n<video src='{content}' controls></video>\n```"
             else:  # image
-                formatted_content = f"![Generated Image]({content})"
+                formatted_content = f"🎨Finished!\n![Generated Image]({content})"
 
         response = {
             "id": f"chatcmpl-{int(time.time())}",
