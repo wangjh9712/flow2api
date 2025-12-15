@@ -5,11 +5,9 @@ from typing import List, Optional
 import base64
 import re
 import json
-from urllib.parse import urlparse
 from curl_cffi.requests import AsyncSession
 import time
 from urllib.parse import urlparse
-from curl_cffi.requests import AsyncSession
 from ..core.auth import verify_api_key_header
 from ..core.models import ChatCompletionRequest
 from ..services.generation_handler import GenerationHandler, MODEL_CONFIG
