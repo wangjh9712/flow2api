@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List, Optional
-from typing import List, Optional
 import base64
 import re
 import json
@@ -14,7 +13,6 @@ from curl_cffi.requests import AsyncSession
 from ..core.auth import verify_api_key_header
 from ..core.models import ChatCompletionRequest
 from ..services.generation_handler import GenerationHandler, MODEL_CONFIG
-from ..core.logger import debug_logger
 from ..core.logger import debug_logger
 
 router = APIRouter()
