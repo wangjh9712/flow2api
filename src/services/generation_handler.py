@@ -8,6 +8,7 @@ from ..core.logger import debug_logger
 from ..core.config import config
 from ..core.models import Task, RequestLog
 from .file_cache import FileCache
+from .flow_client import FlowClient, FlowAPIException
 
 
 # Model configuration
@@ -352,18 +353,52 @@ class GenerationHandler:
                 duration
             )
 
+        except FlowAPIException as e:
+            # 处理 API 异常 (4xx, 5xx)
+            error_status = e.status_text
+            # 优先显示 API 返回的 status 字段 (如 UNAUTHENTICATED)，否则显示完整错误信息
+            user_msg = f"生成失败: {error_status}" if error_status and error_status != f"HTTP_{e.status_code}" else f"生成失败: {e.error_message}"
+            
+            debug_logger.log_error(f"[GENERATION] ❌ API Error {e.status_code}: {e.error_message}")
+            
+            if stream:
+                yield self._create_stream_chunk(f"❌ {user_msg}\n")
+            
+            # 429 检查：使用状态码判断
+            if e.status_code == 429:
+                debug_logger.log_warning(f"[429_BAN] Token {token.id} 遇到429错误，立即禁用")
+                await self.token_manager.ban_token_for_429(token.id)
+            else:
+                await self.token_manager.record_error(token.id)
+                
+            yield self._create_error_response(user_msg)
+
+            # 记录失败日志 (使用实际状态码)
+            duration = time.time() - start_time
+            await self._log_request(
+                token.id if token else None,
+                f"generate_{generation_type if model_config else 'unknown'}",
+                {"model": model, "prompt": prompt[:100], "has_images": images is not None and len(images) > 0},
+                {"error": e.response_data},  # 记录完整错误响应数据
+                e.status_code,  # 记录实际状态码
+                duration
+            )
+
         except Exception as e:
+            # 处理其他异常 (网络错误、代码错误等)，默认为 500
             error_msg = f"生成失败: {str(e)}"
             debug_logger.log_error(f"[GENERATION] ❌ {error_msg}")
             if stream:
                 yield self._create_stream_chunk(f"❌ {error_msg}\n")
+            
             if token:
-                # 检测429错误，立即禁用token
+                # 兼容旧的字符串判断 (以防万一)
                 if "429" in str(e) or "HTTP Error 429" in str(e):
                     debug_logger.log_warning(f"[429_BAN] Token {token.id} 遇到429错误，立即禁用")
                     await self.token_manager.ban_token_for_429(token.id)
                 else:
                     await self.token_manager.record_error(token.id)
+            
             yield self._create_error_response(error_msg)
 
             # 记录失败日志
