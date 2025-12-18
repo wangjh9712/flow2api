@@ -7,6 +7,7 @@ import time
 import re
 from typing import Optional, Dict
 from playwright.async_api import async_playwright, Browser, BrowserContext
+from ..core.config import config
 
 from ..core.logger import debug_logger
 
@@ -106,41 +107,61 @@ class BrowserCaptchaService:
 
         try:
             # 获取浏览器专用代理配置
+            captcha_method = "browser"
             proxy_url = None
+            scraping_url = None
+            
             if self.db:
                 captcha_config = await self.db.get_captcha_config()
+                captcha_method = captcha_config.captcha_method
+                scraping_url = captcha_config.scraping_browser_url
                 if captcha_config.browser_proxy_enabled and captcha_config.browser_proxy_url:
                     proxy_url = captcha_config.browser_proxy_url
+            
+            debug_logger.log_info(f"[BrowserCaptcha] 初始化模式: {captcha_method}")
 
-            debug_logger.log_info(f"[BrowserCaptcha] 正在启动浏览器... (proxy={proxy_url or 'None'})")
             self.playwright = await async_playwright().start()
+            
+            # === 分支 1: Bright Data Scraping Browser (远程 CDP) ===
+            if captcha_method == "scraping_browser":
+                if not scraping_url:
+                    raise ValueError("未配置 Scraping Browser URL")
+                
+                debug_logger.log_info(f"[BrowserCaptcha] 正在连接 Scraping Browser...")
+                # 使用 connect_over_cdp 连接
+                self.browser = await self.playwright.chromium.connect_over_cdp(scraping_url)
+                debug_logger.log_info(f"[BrowserCaptcha] ✅ Scraping Browser 连接成功")
+                
+            # === 分支 2: 本地 Playwright 浏览器 ===
+            else:
+                debug_logger.log_info(f"[BrowserCaptcha] 正在启动本地浏览器... (proxy={proxy_url or 'None'})")
+                
+                # 配置浏览器启动参数
+                launch_options = {
+                    'headless': self.headless,
+                    'args': [
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-dev-shm-usage',
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox'
+                    ]
+                }
 
-            # 配置浏览器启动参数
-            launch_options = {
-                'headless': self.headless,
-                'args': [
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox'
-                ]
-            }
+                # 如果有代理，解析并添加代理配置
+                if proxy_url:
+                    proxy_config = parse_proxy_url(proxy_url)
+                    if proxy_config:
+                        launch_options['proxy'] = proxy_config
+                        auth_info = "auth=yes" if 'username' in proxy_config else "auth=no"
+                        debug_logger.log_info(f"[BrowserCaptcha] 代理配置: {proxy_config['server']} ({auth_info})")
 
-            # 如果有代理，解析并添加代理配置
-            if proxy_url:
-                proxy_config = parse_proxy_url(proxy_url)
-                if proxy_config:
-                    launch_options['proxy'] = proxy_config
-                    auth_info = "auth=yes" if 'username' in proxy_config else "auth=no"
-                    debug_logger.log_info(f"[BrowserCaptcha] 代理配置: {proxy_config['server']} ({auth_info})")
-                else:
-                    debug_logger.log_warning(f"[BrowserCaptcha] 代理URL格式错误: {proxy_url}")
+                self.browser = await self.playwright.chromium.launch(**launch_options)
+                debug_logger.log_info(f"[BrowserCaptcha] ✅ 本地浏览器已启动")
 
-            self.browser = await self.playwright.chromium.launch(**launch_options)
             self._initialized = True
-            debug_logger.log_info(f"[BrowserCaptcha] ✅ 浏览器已启动 (headless={self.headless}, proxy={proxy_url or 'None'})")
+            
         except Exception as e:
-            debug_logger.log_error(f"[BrowserCaptcha] ❌ 浏览器启动失败: {str(e)}")
+            debug_logger.log_error(f"[BrowserCaptcha] ❌ 浏览器初始化失败: {str(e)}")
             raise
 
     async def get_token(self, project_id: str) -> Optional[str]:

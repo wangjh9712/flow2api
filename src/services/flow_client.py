@@ -148,8 +148,6 @@ class FlowClient:
         )
         return result
 
-    # ... (其余方法保持不变) ...
-
     # ========== 项目管理 (使用ST) ==========
 
     async def create_project(self, st: str, title: str) -> str:
@@ -545,13 +543,14 @@ class FlowClient:
         return str(uuid.uuid4())
 
     async def _get_recaptcha_token(self, project_id: str) -> Optional[str]:
-        """获取reCAPTCHA token - 支持两种方式"""
+        """获取reCAPTCHA token - 支持三种方式"""
         captcha_method = config.captcha_method
 
-        if captcha_method == "browser":
+        # 浏览器打码 (本地 或 Scraping Browser)
+        if captcha_method in ["browser", "scraping_browser"]:
             try:
                 from .browser_captcha import BrowserCaptchaService
-                service = await BrowserCaptchaService.get_instance(self.proxy_manager)
+                service = await BrowserCaptchaService.get_instance(self.proxy_manager.db)
                 return await service.get_token(project_id)
             except Exception as e:
                 debug_logger.log_error(f"[reCAPTCHA Browser] error: {str(e)}")

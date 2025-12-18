@@ -9,6 +9,7 @@ from ..core.database import Database
 from ..services.token_manager import TokenManager
 from ..services.proxy_manager import ProxyManager
 from ..core.config import config
+from ..core.logger import debug_logger
 
 router = APIRouter()
 
@@ -875,6 +876,7 @@ async def update_captcha_config(
     yescaptcha_base_url = request.get("yescaptcha_base_url")
     browser_proxy_enabled = request.get("browser_proxy_enabled", False)
     browser_proxy_url = request.get("browser_proxy_url", "")
+    scraping_browser_url = request.get("scraping_browser_url", "")
 
     # 验证浏览器代理URL格式
     if browser_proxy_enabled and browser_proxy_url:
@@ -887,11 +889,20 @@ async def update_captcha_config(
         yescaptcha_api_key=yescaptcha_api_key,
         yescaptcha_base_url=yescaptcha_base_url,
         browser_proxy_enabled=browser_proxy_enabled,
-        browser_proxy_url=browser_proxy_url if browser_proxy_enabled else None
+        browser_proxy_url=browser_proxy_url if browser_proxy_enabled else None,
+        scraping_browser_url=scraping_browser_url
     )
 
     # 🔥 Hot reload: sync database config to memory
     await db.reload_config_to_memory()
+
+    try:
+        from ..services.browser_captcha import BrowserCaptchaService
+        service = await BrowserCaptchaService.get_instance()
+        await service.close()
+        debug_logger.log_info("[Config] 已重置浏览器服务以应用新配置")
+    except Exception as e:
+        debug_logger.log_warning(f"[Config] 重置浏览器服务失败: {e}")
 
     return {"success": True, "message": "验证码配置更新成功"}
 
@@ -905,5 +916,6 @@ async def get_captcha_config(token: str = Depends(verify_admin_token)):
         "yescaptcha_api_key": captcha_config.yescaptcha_api_key,
         "yescaptcha_base_url": captcha_config.yescaptcha_base_url,
         "browser_proxy_enabled": captcha_config.browser_proxy_enabled,
-        "browser_proxy_url": captcha_config.browser_proxy_url or ""
+        "browser_proxy_url": captcha_config.browser_proxy_url or "",
+        "scraping_browser_url": captcha_config.scraping_browser_url or ""
     }
