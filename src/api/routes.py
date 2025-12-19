@@ -160,6 +160,8 @@ async def create_chat_completion(
         if not prompt:
             raise HTTPException(status_code=400, detail="Prompt cannot be empty")
 
+        n = request.n if request.n in [1, 2, 4] else 1
+
         # Call generation handler
         if request.stream:
             # Streaming response
@@ -168,7 +170,8 @@ async def create_chat_completion(
                     model=request.model,
                     prompt=prompt,
                     images=images if images else None,
-                    stream=True
+                    stream=True,
+                    n=n
                 ):
                     yield chunk
 
@@ -191,7 +194,8 @@ async def create_chat_completion(
                 model=request.model,
                 prompt=prompt,
                 images=images if images else None,
-                stream=False
+                stream=False,
+                n=n
             ):
                 result = chunk
 

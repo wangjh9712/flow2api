@@ -227,7 +227,8 @@ class GenerationHandler:
         model: str,
         prompt: str,
         images: Optional[List[bytes]] = None,
-        stream: bool = False
+        stream: bool = False,
+        n: int = 1
     ) -> AsyncGenerator:
         """统一生成入口
 
@@ -321,9 +322,9 @@ class GenerationHandler:
 
             # 5. 根据类型处理
             if generation_type == "image":
-                debug_logger.log_info(f"[GENERATION] 开始图片生成流程...")
+                debug_logger.log_info(f"[GENERATION] 开始图片生成流程 (数量: {n})...")
                 async for chunk in self._handle_image_generation(
-                    token, project_id, model_config, prompt, images, stream
+                    token, project_id, model_config, prompt, images, stream, n
                 ):
                     yield chunk
             else:  # video
@@ -426,7 +427,8 @@ class GenerationHandler:
         model_config: dict,
         prompt: str,
         images: Optional[List[bytes]],
-        stream: bool
+        stream: bool,
+        count: int
     ) -> AsyncGenerator:
         """处理图片生成 (同步返回)"""
 
@@ -459,7 +461,8 @@ class GenerationHandler:
 
             # 调用生成API
             if stream:
-                yield self._create_stream_chunk("正在生成图片...\n")
+                msg = "正在生成图片...\n" if count == 1 else f"正在生成 {count} 张图片...\n"
+                yield self._create_stream_chunk(msg)
 
             result = await self.flow_client.generate_image(
                 at=token.at,
@@ -467,47 +470,53 @@ class GenerationHandler:
                 prompt=prompt,
                 model_name=model_config["model_name"],
                 aspect_ratio=model_config["aspect_ratio"],
-                image_inputs=image_inputs
+                image_inputs=image_inputs,
+                count=count
             )
 
             # 提取URL
             media = result.get("media", [])
+            seeds = result.get("_generated_seeds", [])
+
             if not media:
                 yield self._create_error_response("生成结果为空")
                 return
 
-            image_url = media[0]["image"]["generatedImage"]["fifeUrl"]
+            content_parts = []
+            
+            # Process each generated image
+            for idx, item in enumerate(media):
+                image_url = item["image"]["generatedImage"]["fifeUrl"]
+                seed = seeds[idx] if idx < len(seeds) else "Unknown"
 
-            # 缓存图片 (如果启用)
-            local_url = image_url
-            if config.cache_enabled:
-                try:
-                    if stream:
-                        yield self._create_stream_chunk("缓存图片中...\n")
-                    cached_filename = await self.file_cache.download_and_cache(image_url, "image")
-                    local_url = f"{self._get_base_url()}/tmp/{cached_filename}"
-                    if stream:
-                        yield self._create_stream_chunk("✅ 图片缓存成功,准备返回缓存地址...\n")
-                except Exception as e:
-                    debug_logger.log_error(f"Failed to cache image: {str(e)}")
-                    # 缓存失败不影响结果返回,使用原始URL
-                    local_url = image_url
-                    if stream:
-                        yield self._create_stream_chunk(f"⚠️ 缓存失败: {str(e)}\n正在返回源链接...\n")
-            else:
-                if stream:
-                    yield self._create_stream_chunk("缓存已关闭,正在返回源链接...\n")
+                # 缓存图片 (如果启用)
+                local_url = image_url
+                if config.cache_enabled:
+                    try:
+                        if stream and idx == 0: # Only notify once
+                            yield self._create_stream_chunk("缓存图片中...\n")
+                        cached_filename = await self.file_cache.download_and_cache(image_url, "image")
+                        local_url = f"{self._get_base_url()}/tmp/{cached_filename}"
+                    except Exception as e:
+                        debug_logger.log_error(f"Failed to cache image {idx}: {str(e)}")
+                        # Use original URL on failure
+                
+                # Format: Image + Seed
+                content_parts.append(f"![Generated Image]({local_url})\n\n**Seed:** `{seed}`")
+
+            # Combine all images into one response
+            final_content = "🎨Finished!\n\n" + "\n\n".join(content_parts)
 
             # 返回结果
             if stream:
                 yield self._create_stream_chunk(
-                    f"🎨Finished!\n\n![Generated Image]({local_url})",
+                    final_content,
                     finish_reason="stop"
                 )
             else:
                 yield self._create_completion_response(
-                    local_url,  # 直接传URL,让方法内部格式化
-                    media_type="image"
+                    final_content,
+                    media_type="raw"  # Use raw mode to skip default formatting
                 )
 
         finally:
@@ -838,12 +847,14 @@ class GenerationHandler:
         # 可用性检查: 返回纯文本消息
         if is_availability_check:
             formatted_content = content
+        elif media_type == "raw":
+            formatted_content = content
         else:
             # 媒体生成: 根据媒体类型格式化内容为Markdown
             if media_type == "video":
                 formatted_content = f"```html\n<video src='{content}' controls></video>\n```"
             else:  # image
-                formatted_content = f"🎨Finished!\n\n![Generated Image]({content})"
+                formatted_content = f"{content}"
 
         response = {
             "id": f"chatcmpl-{int(time.time())}",

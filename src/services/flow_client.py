@@ -251,7 +251,8 @@ class FlowClient:
         prompt: str,
         model_name: str,
         aspect_ratio: str,
-        image_inputs: Optional[List[Dict]] = None
+        image_inputs: Optional[List[Dict]] = None,
+        count: int = 1
     ) -> dict:
         """生成图片(同步返回)"""
         url = f"{self.api_base_url}/projects/{project_id}/flowMedia:batchGenerateImages"
@@ -259,26 +260,35 @@ class FlowClient:
         recaptcha_token = await self._get_recaptcha_token(project_id) or ""
         session_id = self._generate_session_id()
 
-        request_data = {
-            "clientContext": {
-                "recaptchaToken": recaptcha_token,
-                "projectId": project_id,
-                "sessionId": session_id,
-                "tool": "PINHOLE"
-            },
-            "seed": random.randint(1, 99999),
-            "imageModelName": model_name,
-            "imageAspectRatio": aspect_ratio,
-            "prompt": prompt,
-            "imageInputs": image_inputs or []
-        }
+        requests_list = []
+        generated_seeds = []
+
+        # Loop to create multiple requests with unique seeds
+        for _ in range(count):
+            seed = random.randint(1, 99999)
+            generated_seeds.append(seed)
+            
+            request_data = {
+                "clientContext": {
+                    "recaptchaToken": recaptcha_token,
+                    "projectId": project_id,
+                    "sessionId": session_id,
+                    "tool": "PINHOLE"
+                },
+                "seed": seed,
+                "imageModelName": model_name,
+                "imageAspectRatio": aspect_ratio,
+                "prompt": prompt,
+                "imageInputs": image_inputs or []
+            }
+            requests_list.append(request_data)
 
         json_data = {
             "clientContext": {
                 "recaptchaToken": recaptcha_token,
                 "sessionId": session_id
             },
-            "requests": [request_data]
+            "requests": requests_list
         }
 
         result = await self._make_request(
@@ -289,6 +299,7 @@ class FlowClient:
             at_token=at
         )
 
+        result["_generated_seeds"] = generated_seeds
         return result
 
     # ========== 视频生成 (使用AT) - 异步返回 ==========
