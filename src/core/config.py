@@ -213,17 +213,6 @@ class Config:
             self._config["captcha"] = {}
         self._config["captcha"]["yescaptcha_base_url"] = base_url
 
-    
-    @property
-    def scraping_browser_url(self) -> str:
-        """Get Bright Data Scraping Browser URL"""
-        return self._config.get("captcha", {}).get("scraping_browser_url", "")
-
-    def set_scraping_browser_url(self, url: str):
-        """Set Bright Data Scraping Browser URL"""
-        if "captcha" not in self._config:
-            self._config["captcha"] = {}
-        self._config["captcha"]["scraping_browser_url"] = url
 
 # Global config instance
 config = Config()
