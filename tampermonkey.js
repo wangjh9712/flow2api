@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Flow2API Auto Sync & Login (Humanized)
 // @namespace    http://tampermonkey.net/
-// @version      1.5
-// @description  自动同步 Token，处理中间登录页，并模拟人工随机延迟输入密码
+// @version      1.6
+// @description  自动同步 Token，处理中间登录页，处理Session过期，并模拟人工随机延迟输入密码
 // @author       Flow2API User
 // @match        https://labs.google/*
 // @match        https://accounts.google.com/*
@@ -97,7 +97,30 @@
     async function tryAttemptLogin() {
         if (isTyping) return;
 
-        // --- 子场景 A: 账号选择页 ---
+        // --- 子场景 A: Session Expired (会话过期) ---
+        // URL: https://accounts.google.com/info/sessionexpired
+        if (window.location.pathname.includes('/info/sessionexpired')) {
+            // 查找 #sessionexpiredNext 容器内的按钮
+            const expiredBtnContainer = document.getElementById('sessionexpiredNext');
+            if (expiredBtnContainer) {
+                const btn = expiredBtnContainer.querySelector('button');
+                if (btn) {
+                    console.log("[Flow2API Login] ⚠️ 检测到会话过期页面，点击 'Try again'...");
+                    btn.click();
+                    return;
+                }
+            }
+            // 备用选择器：查找包含 "Try again" 或 "重试" 的按钮
+            const allBtns = Array.from(document.querySelectorAll('button'));
+            const textBtn = allBtns.find(b => b.innerText.includes('Try again') || b.innerText.includes('重试'));
+            if (textBtn) {
+                 console.log("[Flow2API Login] ⚠️ 通过文本检测到会话过期按钮，点击...");
+                 textBtn.click();
+                 return;
+            }
+        }
+
+        // --- 子场景 B: 账号选择页 ---
         const accountItem = document.querySelector('ul li:first-child div[role="link"]');
         if (accountItem) {
             console.log("[Flow2API Login] 发现账号列表，点击第一个账号...");
@@ -105,7 +128,7 @@
             return;
         }
 
-        // --- 子场景 B: 密码输入页 ---
+        // --- 子场景 C: 密码输入页 ---
         const passwordInput = document.querySelector('input[name="Passwd"]');
         const nextButton = document.querySelector('#passwordNext');
 

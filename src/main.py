@@ -202,3 +202,11 @@ async def manage_page():
     if manage_file.exists():
         return FileResponse(str(manage_file))
     return HTMLResponse(content="<h1>Management Page Not Found</h1>", status_code=404)
+
+@app.get("/generate", response_class=HTMLResponse)
+async def generate_page():
+    """Generation page"""
+    generate_file = static_path / "generate.html"
+    if generate_file.exists():
+        return FileResponse(str(generate_file))
+    return HTMLResponse(content="<h1>Generation Page Not Found</h1>", status_code=404)

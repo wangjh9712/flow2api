@@ -876,16 +876,23 @@ class GenerationHandler:
     def _create_error_response(self, error_message: str) -> str:
         """创建错误响应"""
         import json
+        import time
 
-        error = {
-            "error": {
-                "message": error_message,
-                "type": "invalid_request_error",
-                "code": "generation_failed"
-            }
+        error_chunk = {
+            "id": f"chatcmpl-error-{int(time.time())}",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": "flow2api",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": f"\n\n❌ **Error**: {error_message}"  # 将错误追加到内容中显示
+                },
+                "finish_reason": "stop"
+            }]
         }
 
-        return json.dumps(error, ensure_ascii=False)
+        return f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\ndata: [DONE]\n\n"
 
     def _get_base_url(self) -> str:
         """获取基础URL用于缓存文件访问"""

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flow2API Studio Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #18181b; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+        .checkerboard {
+            background-image: linear-gradient(45deg, #2a2a2a 25%, transparent 25%), 
+                              linear-gradient(-45deg, #2a2a2a 25%, transparent 25%), 
+                              linear-gradient(45deg, transparent 75%, #2a2a2a 75%), 
+                              linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        [v-cloak] { display: none; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+            20%, 40%, 60%, 80% { transform: translateX(4px); }
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { background: "#09090b", surface: "#18181b", border: "#27272a", primary: "#3b82f6" } } }
+        }
+    </script>
+</head>
+<body class="bg-background text-gray-200 h-screen flex flex-col overflow-hidden font-sans">
+    <div id="app" v-cloak class="flex h-full">
+        <div class="w-[400px] bg-surface border-r border-border flex flex-col h-full flex-shrink-0">
+            <div class="p-4 border-b border-border space-y-3">
+                <h1 class="font-bold text-lg bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent flex items-center gap-2">
+                    <i data-lucide="zap" class="w-5 h-5 text-blue-400"></i> Flow2API Studio
+                </h1>
+                <div class="flex items-center bg-black/30 rounded px-2 py-1.5 border border-border">
+                    <i data-lucide="key" class="w-3 h-3 text-gray-500 mr-2"></i>
+                    <input type="password" v-model="apiKey" class="bg-transparent text-xs w-full outline-none text-gray-300 placeholder-gray-600" placeholder="Enter API Key">
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">Prompt</label>
+                    <textarea v-model="prompt" rows="5" class="w-full bg-black/20 border border-border rounded-lg p-3 text-sm focus:border-primary focus:bg-black/40 outline-none transition-all resize-none" placeholder="Enter your prompt here..."></textarea>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-gray-400 uppercase tracking-wider flex justify-between items-center">
+                        Reference Images ({{ refImages.length }})
+                        <button v-if="refImages.length" @click="clearImages" class="text-[10px] text-red-400 hover:text-red-300">Clear All</button>
+                    </label>
+                    
+                    <div 
+                        @dragover.prevent="isDragging = true" 
+                        @dragleave.prevent="isDragging = false" 
+                        @drop.prevent="handleDrop"
+                        @click="$refs.fileInput.click()"
+                        class="border-2 border-dashed rounded-lg p-4 transition-all cursor-pointer text-center group"
+                        :class="isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-gray-500 bg-black/20'"
+                    >
+                        <input type="file" ref="fileInput" multiple accept="image/*" class="hidden" @change="handleFileSelect">
+                        <div class="flex flex-col items-center justify-center gap-2 py-2">
+                            <i data-lucide="upload-cloud" class="w-6 h-6 text-gray-500 group-hover:text-gray-300"></i>
+                            <span class="text-xs text-gray-500 group-hover:text-gray-300">Click or Drag images here</span>
+                        </div>
+                    </div>
+
+                    <div v-if="refImages.length" class="grid grid-cols-3 gap-2 mt-3">
+                        <div v-for="(img, idx) in refImages" :key="idx" class="relative group aspect-square rounded overflow-hidden border border-border bg-black">
+                            <img :src="img.previewUrl" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity cursor-pointer" @click="openEditor(idx)">
+                            <div v-if="img.hasMask" class="absolute top-1 left-1 w-2 h-2 bg-red-500 rounded-full shadow-sm"></div>
+                            <button @click.stop="removeImage(idx)" class="absolute top-1 right-1 p-1 bg-black/60 rounded text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/80">
+                                <i data-lucide="x" class="w-3 h-3"></i>
+                            </button>
+                            <div class="absolute inset-x-0 bottom-0 bg-black/70 text-[10px] text-center py-1 opacity-0 group-hover:opacity-100 pointer-events-none">
+                                Click to Edit
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-4 border-t border-border">
+                    <div class="col-span-2 space-y-1">
+                        <label class="text-xs text-gray-500">Model</label>
+                        <select v-model="config.model" class="w-full bg-black/20 border border-border rounded px-2 py-1.5 text-xs outline-none">
+                            <option value="gemini-2.5-flash-image-landscape">Gemini 2.5 Flash (Landscape)</option>
+                            <option value="gemini-2.5-flash-image-portrait">Gemini 2.5 Flash (Portrait)</option>
+                            <option value="gemini-3.0-pro-image-landscape">Gemini 3.0 Pro (Landscape)</option>
+                            <option value="gemini-3.0-pro-image-portrait">Gemini 3.0 Pro (Portrait)</option>
+                            <option value="imagen-4.0-generate-preview-landscape">Imagen 4.0 (Landscape)</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1 col-span-2">
+                        <label class="text-xs text-gray-500">Count</label>
+                        <div class="flex bg-black/20 rounded border border-border p-0.5">
+                            <button v-for="n in [1, 2, 4]" :key="n" @click="config.n = n" class="flex-1 py-1 text-xs rounded transition-colors" :class="config.n === n ? 'bg-primary text-white' : 'text-gray-400 hover:text-gray-200'">{{ n }}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-border bg-surface">
+                <button @click="generate" :disabled="isGenerating || !apiKey" 
+                    class="w-full py-2.5 rounded-lg font-semibold text-sm shadow-lg shadow-blue-900/10 transition-all flex justify-center items-center gap-2"
+                    :class="isGenerating ? 'bg-gray-700 cursor-not-allowed text-gray-400' : 'bg-primary hover:bg-blue-600 text-white active:scale-95'">
+                    <i v-if="isGenerating" data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                    <span v-if="isGenerating">Generating...</span>
+                    <span v-else>Generate</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 bg-[#0c0c0e] flex flex-col min-w-0 relative">
+            <div class="flex-1 overflow-y-auto p-6" ref="scrollContainer">
+                <div v-if="!currentResult.length && !isGenerating && !history.length && !errorMessage" class="h-full flex flex-col items-center justify-center text-gray-600 gap-4 opacity-50">
+                    <i data-lucide="layout-template" class="w-16 h-16 stroke-1"></i>
+                    <p class="text-sm font-medium">Drag images to the left panel to start</p>
+                </div>
+
+                <div v-if="isGenerating || currentResult.length > 0 || errorMessage" class="mb-8">
+                    <div class="flex items-center gap-3 mb-4 sticky top-0 bg-[#0c0c0e]/95 backdrop-blur py-2 z-10 border-b border-white/5">
+                        <span class="text-xs font-bold px-2 py-1 rounded border" 
+                              :class="errorMessage ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'">
+                            {{ errorMessage ? 'ERROR' : 'CURRENT' }}
+                        </span>
+                        <span v-if="streamingLog" class="text-xs font-mono truncate max-w-lg" :class="errorMessage ? 'text-red-400' : 'text-gray-400 animate-pulse'">
+                            {{ streamingLog }}
+                        </span>
+                    </div>
+
+                    <div v-if="errorMessage" class="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-lg mb-4 text-sm font-mono whitespace-pre-wrap shake shadow-lg shadow-red-900/10">
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="alert-triangle" class="w-5 h-5 flex-shrink-0 mt-0.5"></i>
+                            <div>
+                                <div class="font-bold mb-1">Generation Failed</div>
+                                <div>{{ errorMessage }}</div>
+                                <div v-if="errorMessage.includes('PERMISSION_DENIED')" class="mt-2 text-xs text-red-300 bg-red-500/10 p-2 rounded">
+                                    💡 提示: 如果多次遇到同一错误，请联系管理员。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-4" :class="gridClass">
+                        <div v-if="isGenerating && currentResult.length === 0 && !errorMessage" v-for="i in config.n" class="aspect-video bg-white/5 rounded-lg animate-pulse border border-white/5 flex items-center justify-center">
+                            <i data-lucide="image" class="w-8 h-8 text-white/10"></i>
+                        </div>
+                        
+                        <div v-for="(img, idx) in currentResult" :key="idx" class="group relative rounded-lg overflow-hidden border border-white/10 bg-[#141416]">
+                            <img :src="img.url" class="w-full h-full object-contain bg-checkerboard" @click="previewImage(img.url)">
+                            <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
+                                <a :href="img.url" target="_blank" class="p-2 bg-white/10 rounded-full hover:bg-white/20 text-white transition-colors" title="Open Original">
+                                    <i data-lucide="external-link" class="w-5 h-5"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="history.length" class="space-y-8 pt-8 border-t border-white/5">
+                    <div class="flex items-center gap-2 text-gray-500">
+                        <i data-lucide="history" class="w-4 h-4"></i>
+                        <span class="text-xs font-bold tracking-wider">HISTORY</span>
+                        <button @click="history = []" class="ml-auto text-xs hover:text-red-400">Clear</button>
+                    </div>
+                    <div v-for="item in history" :key="item.id" class="opacity-60 hover:opacity-100 transition-opacity">
+                        <p class="text-xs text-gray-500 mb-2 line-clamp-1 cursor-pointer hover:text-gray-300" @click="prompt = item.prompt">{{ item.prompt }}</p>
+                        <div class="grid grid-cols-4 gap-2">
+                            <img v-for="img in item.images" :src="img.url" class="rounded border border-white/5 bg-black cursor-pointer aspect-square object-cover" @click="previewImage(img.url)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <transition name="fade">
+            <div v-if="editor.show" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-8">
+                <div class="bg-surface border border-border rounded-xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+                    <div class="h-14 border-b border-border flex items-center justify-between px-4 bg-surface">
+                        <span class="font-bold text-gray-200">Mask Editor</span>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2 bg-black/20 rounded-lg p-1 border border-border">
+                                <button @click="editor.brushType='brush'" class="p-1.5 rounded transition-colors" :class="editor.brushType=='brush' ? 'bg-primary text-white' : 'text-gray-400 hover:text-gray-200'"><i data-lucide="paintbrush" class="w-4 h-4"></i></button>
+                                <div class="w-px h-4 bg-border"></div>
+                                <input type="range" v-model.number="editor.brushSize" min="5" max="100" class="w-20 accent-primary h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                            <button @click="clearEditorCanvas" class="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"><i data-lucide="trash-2" class="w-3 h-3"></i> Clear Mask</button>
+                        </div>
+                        <div class="flex gap-2">
+                            <button @click="closeEditor(false)" class="px-4 py-1.5 text-xs font-medium text-gray-400 hover:text-white transition-colors">Cancel</button>
+                            <button @click="closeEditor(true)" class="px-4 py-1.5 text-xs font-medium bg-primary hover:bg-blue-600 text-white rounded transition-colors">Save Mask</button>
+                        </div>
+                    </div>
+                    <div class="flex-1 bg-[#101012] relative overflow-hidden flex items-center justify-center checkerboard" ref="editorContainer">
+                        <canvas ref="editorCanvas" class="cursor-crosshair shadow-2xl" @mousedown="startDraw" @mousemove="drawing" @mouseup="stopDraw" @mouseleave="stopDraw"></canvas>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <transition name="fade">
+            <div v-if="previewUrl" class="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center cursor-zoom-out" @click="previewUrl=null">
+                <img :src="previewUrl" class="max-w-[95vw] max-h-[95vh] object-contain shadow-2xl rounded">
+            </div>
+        </transition>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, nextTick, computed, watch, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const apiKey = ref(localStorage.getItem('flow2api_key') || '');
+                const prompt = ref('');
+                const isGenerating = ref(false);
+                const streamingLog = ref('');
+                const errorMessage = ref('');
+                const refImages = ref([]); 
+                const currentResult = ref([]);
+                const history = ref([]);
+                const isDragging = ref(false);
+                const previewUrl = ref(null);
+                
+                // 移除 Seed 配置
+                const config = reactive({ model: 'gemini-2.5-flash-image-landscape', n: 1 });
+                
+                const editor = reactive({ show: false, index: -1, brushType: 'brush', brushSize: 30 });
+                const editorCanvas = ref(null);
+                let ctx = null;
+                let isDrawing = false;
+                let currentImgObj = null;
+                
+                // Markdown Buffer 定义在 setup 中，但在 generate 中重置
+                let markdownBuffer = '';
+
+                const updateIcons = () => nextTick(() => lucide.createIcons());
+                watch(apiKey, v => localStorage.setItem('flow2api_key', v));
+
+                const handleDrop = (e) => processFiles(e.dataTransfer.files);
+                const handleFileSelect = (e) => processFiles(e.target.files);
+                
+                const processFiles = (files) => {
+                    isDragging.value = false;
+                    for (let file of files) {
+                        if (!file.type.startsWith('image/')) continue;
+                        const reader = new FileReader();
+                        reader.onload = e => {
+                            refImages.value.push({ file: file, previewUrl: e.target.result, hasMask: false, maskDataUrl: null });
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                    updateIcons();
+                };
+
+                const removeImage = (idx) => refImages.value.splice(idx, 1);
+                const clearImages = () => refImages.value = [];
+
+                const openEditor = (idx) => {
+                    editor.index = idx;
+                    editor.show = true;
+                    nextTick(() => {
+                        const img = new Image();
+                        img.src = refImages.value[idx].previewUrl;
+                        img.onload = () => {
+                            currentImgObj = img;
+                            initCanvas(img, refImages.value[idx].maskDataUrl);
+                        };
+                    });
+                };
+
+                const initCanvas = (img, existingMask) => {
+                    const cvs = editorCanvas.value;
+                    const container = cvs.parentElement;
+                    const maxWidth = container.clientWidth - 40;
+                    const maxHeight = container.clientHeight - 40;
+                    const ratio = Math.min(maxWidth / img.width, maxHeight / img.height);
+                    cvs.width = img.width;
+                    cvs.height = img.height;
+                    cvs.style.width = `${img.width * ratio}px`;
+                    cvs.style.height = `${img.height * ratio}px`;
+                    ctx = cvs.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    if (existingMask) {
+                        const maskImg = new Image();
+                        maskImg.onload = () => ctx.drawImage(maskImg, 0, 0);
+                        maskImg.src = existingMask;
+                    }
+                };
+
+                const startDraw = (e) => { isDrawing = true; drawing(e); };
+                const stopDraw = () => { isDrawing = false; ctx.beginPath(); };
+                
+                const drawing = (e) => {
+                    if (!isDrawing) return;
+                    const rect = editorCanvas.value.getBoundingClientRect();
+                    const scaleX = editorCanvas.value.width / rect.width;
+                    const scaleY = editorCanvas.value.height / rect.height;
+                    const x = (e.clientX - rect.left) * scaleX;
+                    const y = (e.clientY - rect.top) * scaleY;
+                    ctx.lineWidth = editor.brushSize;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                };
+
+                const clearEditorCanvas = () => {
+                    if (currentImgObj) {
+                        ctx.globalCompositeOperation = 'source-over';
+                        ctx.clearRect(0, 0, editorCanvas.value.width, editorCanvas.value.height);
+                        ctx.drawImage(currentImgObj, 0, 0);
+                    }
+                };
+
+                const closeEditor = (save) => {
+                    if (save && editor.index > -1) {
+                        const tempCanvas = document.createElement('canvas');
+                        let w = editorCanvas.value.width;
+                        let h = editorCanvas.value.height;
+                        const MAX_SIZE = 1536; 
+                        if (w > MAX_SIZE || h > MAX_SIZE) {
+                            const ratio = Math.min(MAX_SIZE / w, MAX_SIZE / h);
+                            w = Math.round(w * ratio);
+                            h = Math.round(h * ratio);
+                        }
+                        tempCanvas.width = w;
+                        tempCanvas.height = h;
+                        const tCtx = tempCanvas.getContext('2d');
+                        tCtx.fillStyle = '#FFFFFF';
+                        tCtx.fillRect(0, 0, w, h);
+                        tCtx.drawImage(editorCanvas.value, 0, 0, w, h);
+                        const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.9);
+                        refImages.value[editor.index].maskDataUrl = dataUrl;
+                        refImages.value[editor.index].hasMask = true;
+                    }
+                    editor.show = false;
+                };
+
+                const generate = async () => {
+                    if (!prompt.value) return alert('Please enter a prompt');
+                    
+                    isGenerating.value = true;
+                    errorMessage.value = '';
+                    streamingLog.value = 'Connecting...';
+                    currentResult.value = [];
+                    markdownBuffer = ''; // 关键修复：重置缓冲区
+                    
+                    const content = [{ type: "text", text: prompt.value }];
+                    for (let img of refImages.value) {
+                        const urlToSend = img.hasMask ? img.maskDataUrl : img.previewUrl;
+                        content.push({ type: "image_url", image_url: { url: urlToSend } });
+                    }
+
+                    const payload = {
+                        model: config.model,
+                        messages: [{ role: "user", content }],
+                        stream: true,
+                        n: config.n,
+                        captcha_token: null
+                    };
+
+                    try {
+                        const response = await fetch('/v1/chat/completions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey.value}` },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = '';
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop();
+
+                            for (const line of lines) {
+                                if (line.trim() === '') continue;
+                                if (line.startsWith('data: ')) {
+                                    const jsonStr = line.substring(6);
+                                    if (jsonStr === '[DONE]') break;
+                                    
+                                    try {
+                                        const json = JSON.parse(jsonStr);
+                                        const delta = json.choices?.[0]?.delta || {};
+
+                                        if (delta.reasoning_content) {
+                                            const log = delta.reasoning_content.replace(/\n/g, ' ');
+                                            streamingLog.value = log;
+                                            if (log.includes('❌') || log.includes('Error:')) errorMessage.value = log;
+                                        }
+
+                                        if (delta.content) {
+                                            if (delta.content.includes('❌') || delta.content.includes('Error:')) {
+                                                errorMessage.value = delta.content.replace(/\*\*/g, '').trim();
+                                                isGenerating.value = false;
+                                            } else {
+                                                parseResult(delta.content);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error('Parse Error:', e);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        errorMessage.value = `Network Error: ${e.message}`;
+                    } finally {
+                        isGenerating.value = false;
+                        if (!errorMessage.value) {
+                            streamingLog.value = '';
+                            if (currentResult.value.length > 0) {
+                                history.value.unshift({
+                                    id: Date.now(),
+                                    prompt: prompt.value,
+                                    images: JSON.parse(JSON.stringify(currentResult.value))
+                                });
+                            }
+                        }
+                    }
+                };
+
+                const parseResult = (text) => {
+                    markdownBuffer += text;
+                    const imgRegex = /!\[.*?\]\((.*?)\)/g;
+                    
+                    const images = [];
+                    let match;
+                    while ((match = imgRegex.exec(markdownBuffer)) !== null) {
+                        images.push({ url: match[1] }); // 移除 Seed
+                    }
+
+                    if (images.length > 0) currentResult.value = images;
+                };
+
+                const previewImage = (url) => previewUrl.value = url;
+                const gridClass = computed(() => config.n === 1 ? 'grid-cols-1' : 'grid-cols-2');
+
+                onMounted(updateIcons);
+
+                return {
+                    apiKey, prompt, isGenerating, streamingLog, errorMessage,
+                    refImages, currentResult, history, config,
+                    editor, editorCanvas, isDragging, previewUrl, gridClass,
+                    handleDrop, handleFileSelect, removeImage, clearImages,
+                    openEditor, clearEditorCanvas, closeEditor,
+                    startDraw, drawing, stopDraw,
+                    generate, previewImage
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
