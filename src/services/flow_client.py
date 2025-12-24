@@ -557,16 +557,6 @@ class FlowClient:
 
     async def _get_recaptcha_token(self, project_id: str) -> Optional[str]:
         """获取reCAPTCHA token - 支持两种方式"""
-        captcha_method = config.captcha_method
-
-        if captcha_method == "browser":
-            try:
-                from .browser_captcha import BrowserCaptchaService
-                service = await BrowserCaptchaService.get_instance(self.proxy_manager)
-                return await service.get_token(project_id)
-            except Exception as e:
-                debug_logger.log_error(f"[reCAPTCHA Browser] error: {str(e)}")
-                return None
 
         client_key = config.yescaptcha_api_key
         if not client_key:
