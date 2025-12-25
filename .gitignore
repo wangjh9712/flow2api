@@ -52,3 +52,6 @@ logs.txt
 *.tmp
 *.bak
 *.cache
+tmp/
+
+docker-compose.yml

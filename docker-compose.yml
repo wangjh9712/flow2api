@@ -1,14 +1,14 @@
-version: '3.8'
-
 services:
   flow2api:
-    image: thesmallhancat/flow2api:latest
+    build: .
+    image: flow2api
     container_name: flow2api
     ports:
-      - "8000:8000"
+      - "31800:8000"
     volumes:
-      - ./data:/app/data
-      - ./config/setting.toml:/app/config/setting.toml
+      - ./:/app
     environment:
+      - HTTP_PROXY=http://192.168.31.1:7890
+      - HTTPS_PROXY=http://192.168.31.1:7890
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
