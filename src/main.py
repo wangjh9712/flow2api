@@ -179,11 +179,11 @@ static_path = Path(__file__).parent.parent / "static"
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    """Redirect to login page"""
-    login_file = static_path / "login.html"
-    if login_file.exists():
-        return FileResponse(str(login_file))
-    return HTMLResponse(content="<h1>Flow2API</h1><p>Frontend not found</p>", status_code=404)
+    """Redirect to generate page"""
+    generate_file = static_path / "generate.html"
+    if generate_file.exists():
+        return FileResponse(str(generate_file))
+    return HTMLResponse(content="<h1>Error 404</h1><p>Frontend not found</p>", status_code=404)
 
 
 @app.get("/login", response_class=HTMLResponse)
