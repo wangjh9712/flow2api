@@ -346,8 +346,18 @@
                 // --- History ---
                 const history = ref([]);
                 const loadHistory = () => {
-                    try { history.value = JSON.parse(localStorage.getItem('nano_history') || '[]'); } 
-                    catch (e) { history.value = []; }
+                    try {
+                        const raw = JSON.parse(localStorage.getItem('nano_history') || '[]');
+                        const now = Date.now();
+                        const validHistory = raw.filter(item => (now - item.id) < 43200000);
+                        
+                        if (validHistory.length !== raw.length) {
+                            localStorage.setItem('nano_history', JSON.stringify(validHistory));
+                        }
+                        history.value = validHistory;
+                    } catch (e) {
+                        history.value = [];
+                    }
                 };
                 const saveHistory = () => localStorage.setItem('nano_history', JSON.stringify(history.value));
                 const clearHistory = () => { history.value = []; saveHistory(); };
@@ -371,6 +381,7 @@
                 // --- Computed ---
                 const updateIcons = () => nextTick(() => lucide.createIcons());
                 watch(apiKey, v => localStorage.setItem('nano_key', v));
+                watch(isGenerating, () => updateIcons());
                 
                 const computedModelName = computed(() => {
                     const m = models.find(x => x.id === selection.model);
@@ -506,6 +517,18 @@
                                 n: config.n
                             })
                         });
+
+                        if (!response.ok) {
+                            let errorDetail = `HTTP Error ${response.status}`;
+                            try {
+                                const errorJson = await response.json();
+                                if (errorJson.detail) errorDetail = errorJson.detail;
+                                else if (errorJson.message) errorDetail = errorJson.message;
+                            } catch (e) {
+                                if (response.statusText) errorDetail = response.statusText;
+                            }
+                            throw new Error(errorDetail);
+                        }
 
                         const reader = response.body.getReader();
                         const decoder = new TextDecoder();
