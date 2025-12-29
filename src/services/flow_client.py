@@ -262,6 +262,9 @@ class FlowClient:
 
         requests_list = []
         generated_seeds = []
+        
+        if prompt:
+            prompt = prompt.encode("unicode-escape").decode("utf-8")
 
         # Loop to create multiple requests with unique seeds
         for _ in range(count):
