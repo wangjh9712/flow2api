@@ -72,13 +72,6 @@ async def lifespan(app: FastAPI):
     config.set_yescaptcha_api_key(captcha_config.yescaptcha_api_key)
     config.set_yescaptcha_base_url(captcha_config.yescaptcha_base_url)
 
-    # Initialize browser captcha service if needed
-    browser_service = None
-    if captcha_config.captcha_method == "browser":
-        from .services.browser_captcha import BrowserCaptchaService
-        browser_service = await BrowserCaptchaService.get_instance(db)
-        print("✓ Browser captcha service initialized (headless mode)")
-
     # Initialize concurrency manager
     tokens = await token_manager.get_all_tokens()
     await concurrency_manager.initialize(tokens)
