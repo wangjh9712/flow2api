@@ -8,7 +8,6 @@ from ..core.auth import AuthManager
 from ..core.database import Database
 from ..services.token_manager import TokenManager
 from ..services.proxy_manager import ProxyManager
-from ..core.config import config
 
 router = APIRouter()
 
@@ -88,9 +87,6 @@ class UpdateAdminConfigRequest(BaseModel):
 
 class ST2ATRequest(BaseModel):
     """ST转AT请求"""
-    st: str
-
-class SyncTokenRequest(BaseModel):
     st: str
 
 class ImportTokenItem(BaseModel):
@@ -256,34 +252,6 @@ async def add_token(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"添加Token失败: {str(e)}")
-
-@router.post("/api/tokens/sync")
-async def sync_token(
-    request: SyncTokenRequest,
-    authorization: str = Header(None)
-):
-    """
-    接收 ST 并自动同步 (支持使用 API Key 认证)
-    """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing authorization")
-
-    token_str = authorization[7:]
-
-    # 允许使用 API Key 或 Admin Session Token
-    if token_str != config.api_key and token_str not in active_admin_tokens:
-        raise HTTPException(status_code=401, detail="Invalid API Key or Admin Token")
-
-    try:
-        result = await token_manager.sync_token_from_st(request.st)
-        return {
-            "success": True,
-            "message": f"Token {'更新' if result['action'] == 'updated' else '创建'}成功",
-            "data": result
-        }
-    except Exception as e:
-        debug_logger.log_error(f"[SYNC] 同步失败: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/api/tokens/{token_id}")
 async def update_token(

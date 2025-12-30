@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Flow2API Auto Sync & Login (Humanized)
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  自动同步 Token，处理中间登录页，处理Session过期，并模拟人工随机延迟输入密码
 // @author       Flow2API User
 // @match        https://labs.google/*
@@ -22,8 +22,8 @@
         // Flow2API 服务器地址
         API_BASE_URL: "http://localhost:8000",
 
-        // Flow2API 的 API Key
-        AUTH_TOKEN: "han1234",
+        // 插件连接 Token (请在管理后台-系统配置-插件连接配置中获取/设置)
+        CONNECTION_TOKEN: "han1234",
 
         // [Labs页面] 刷新间隔 (默认 1 小时)
         RELOAD_INTERVAL: 3600 * 1000
@@ -116,6 +116,26 @@
             if (textBtn) {
                  console.log("[Flow2API Login] ⚠️ 通过文本检测到会话过期按钮，点击...");
                  textBtn.click();
+                 return;
+            }
+        }
+        
+        // --- 子场景: 邮箱输入页 (Identifier) ---
+        // URL: https://accounts.google.com/v3/signin/identifier
+        if (window.location.pathname.includes('/signin/identifier')) {
+            const nextBtn = document.getElementById('identifierNext');
+            if (nextBtn && nextBtn.offsetParent !== null) {
+                 console.log("[Flow2API Login] 检测到邮箱输入页，延迟点击 Next 以避免加载死循环...");
+                 isTyping = true;
+                 
+                 // 延迟 2 秒，等待页面脚本加载完成
+                 await sleep(2000);
+                 
+                 const btn = nextBtn.querySelector('button') || nextBtn;
+                 if(btn) btn.click();
+                 
+                 // 锁定一段时间防止重复点击
+                 setTimeout(() => { isTyping = false; }, 5000);
                  return;
             }
         }
@@ -230,20 +250,22 @@
         console.log("[Flow2API Sync] 获取到 Token，准备上传...");
         GM_xmlhttpRequest({
             method: "POST",
-            url: `${CONFIG.API_BASE_URL}/api/tokens/sync`,
+            url: `${CONFIG.API_BASE_URL}/api/plugin/update-token`, // Updated to new endpoint
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${CONFIG.AUTH_TOKEN}`
+                "Authorization": `Bearer ${CONFIG.CONNECTION_TOKEN}` // Updated to connection token
             },
-            data: JSON.stringify({ st: st }),
+            data: JSON.stringify({ session_token: st }), // Updated payload
             onload: function(response) {
                 if (response.status === 200) {
                     try {
                         const data = JSON.parse(response.responseText);
                         if (data.success) {
-                            console.log(`[Flow2API Sync] ✅ 同步成功! 邮箱: ${data.data.email}`);
+                            console.log(`[Flow2API Sync] ✅ 同步成功! 消息: ${data.message}`);
                         }
                     } catch (e) {}
+                } else {
+                    console.error(`[Flow2API Sync] 同步失败: ${response.status} ${response.responseText}`);
                 }
             }
         });
