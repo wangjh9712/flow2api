@@ -71,6 +71,8 @@ async def lifespan(app: FastAPI):
     config.set_captcha_method(captcha_config.captcha_method)
     config.set_yescaptcha_api_key(captcha_config.yescaptcha_api_key)
     config.set_yescaptcha_base_url(captcha_config.yescaptcha_base_url)
+    config.set_capsolver_api_key(captcha_config.capsolver_api_key)
+    config.set_capsolver_base_url(captcha_config.capsolver_base_url)
 
     # Initialize concurrency manager
     tokens = await token_manager.get_all_tokens()

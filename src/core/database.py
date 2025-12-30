@@ -152,20 +152,24 @@ class Database:
         cursor = await db.execute("SELECT COUNT(*) FROM captcha_config")
         count = await cursor.fetchone()
         if count[0] == 0:
-            captcha_method = "browser"
+            captcha_method = "yescaptcha"
             yescaptcha_api_key = ""
             yescaptcha_base_url = "https://api.yescaptcha.com"
+            capsolver_api_key = ""
+            capsolver_base_url = "https://api.capsolver.com"
 
             if config_dict:
                 captcha_config = config_dict.get("captcha", {})
-                captcha_method = captcha_config.get("captcha_method", "browser")
+                captcha_method = captcha_config.get("captcha_method", "yescaptcha")
                 yescaptcha_api_key = captcha_config.get("yescaptcha_api_key", "")
                 yescaptcha_base_url = captcha_config.get("yescaptcha_base_url", "https://api.yescaptcha.com")
+                capsolver_api_key = captcha_config.get("capsolver_api_key", "")
+                capsolver_base_url = captcha_config.get("capsolver_base_url", "https://api.capsolver.com")
 
             await db.execute("""
-                INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url)
-                VALUES (1, ?, ?, ?)
-            """, (captcha_method, yescaptcha_api_key, yescaptcha_base_url))
+                INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, capsolver_api_key, capsolver_base_url)
+                VALUES (1, ?, ?, ?, ?, ?)
+            """, (captcha_method, yescaptcha_api_key, yescaptcha_base_url, capsolver_api_key, capsolver_base_url))
 
         # Ensure plugin_config has a row
         cursor = await db.execute("SELECT COUNT(*) FROM plugin_config")
@@ -213,13 +217,11 @@ class Database:
                 await db.execute("""
                     CREATE TABLE captcha_config (
                         id INTEGER PRIMARY KEY DEFAULT 1,
-                        captcha_method TEXT DEFAULT 'browser',
+                        captcha_method TEXT DEFAULT 'yescaptcha',
                         yescaptcha_api_key TEXT DEFAULT '',
                         yescaptcha_base_url TEXT DEFAULT 'https://api.yescaptcha.com',
                         website_key TEXT DEFAULT '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV',
                         page_action TEXT DEFAULT 'FLOW_GENERATION',
-                        browser_proxy_enabled BOOLEAN DEFAULT 0,
-                        browser_proxy_url TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
@@ -275,8 +277,8 @@ class Database:
             # Check and add missing columns to captcha_config table
             if await self._table_exists(db, "captcha_config"):
                 captcha_columns_to_add = [
-                    ("browser_proxy_enabled", "BOOLEAN DEFAULT 0"),
-                    ("browser_proxy_url", "TEXT"),
+                    ("capsolver_api_key", "TEXT DEFAULT ''"),
+                    ("capsolver_base_url", "TEXT DEFAULT 'https://api.capsolver.com'"),
                 ]
 
                 for col_name, col_type in captcha_columns_to_add:
@@ -472,13 +474,13 @@ class Database:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS captcha_config (
                     id INTEGER PRIMARY KEY DEFAULT 1,
-                    captcha_method TEXT DEFAULT 'browser',
+                    captcha_method TEXT DEFAULT 'yescaptcha',
                     yescaptcha_api_key TEXT DEFAULT '',
                     yescaptcha_base_url TEXT DEFAULT 'https://api.yescaptcha.com',
+                    capsolver_api_key TEXT DEFAULT '',
+                    capsolver_base_url TEXT DEFAULT 'https://api.capsolver.com',
                     website_key TEXT DEFAULT '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV',
                     page_action TEXT DEFAULT 'FLOW_GENERATION',
-                    browser_proxy_enabled BOOLEAN DEFAULT 0,
-                    browser_proxy_url TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -1179,8 +1181,8 @@ class Database:
         captcha_method: str = None,
         yescaptcha_api_key: str = None,
         yescaptcha_base_url: str = None,
-        browser_proxy_enabled: bool = None,
-        browser_proxy_url: str = None
+        capsolver_api_key: str = None,
+        capsolver_base_url: str = None
     ):
         """Update captcha configuration"""
         async with aiosqlite.connect(self.db_path) as db:
@@ -1193,26 +1195,25 @@ class Database:
                 new_method = captcha_method if captcha_method is not None else current.get("captcha_method", "yescaptcha")
                 new_api_key = yescaptcha_api_key if yescaptcha_api_key is not None else current.get("yescaptcha_api_key", "")
                 new_base_url = yescaptcha_base_url if yescaptcha_base_url is not None else current.get("yescaptcha_base_url", "https://api.yescaptcha.com")
-                new_proxy_enabled = browser_proxy_enabled if browser_proxy_enabled is not None else current.get("browser_proxy_enabled", False)
-                new_proxy_url = browser_proxy_url if browser_proxy_url is not None else current.get("browser_proxy_url")
+                new_capsolver_key = capsolver_api_key if capsolver_api_key is not None else current.get("capsolver_api_key", "")
+                new_capsolver_url = capsolver_base_url if capsolver_base_url is not None else current.get("capsolver_base_url", "https://api.capsolver.com")
 
                 await db.execute("""
                     UPDATE captcha_config
-                    SET captcha_method = ?, yescaptcha_api_key = ?, yescaptcha_base_url = ?,
-                        browser_proxy_enabled = ?, browser_proxy_url = ?, updated_at = CURRENT_TIMESTAMP
+                    SET captcha_method = ?, yescaptcha_api_key = ?, yescaptcha_base_url = ?, capsolver_api_key = ?, capsolver_base_url = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = 1
-                """, (new_method, new_api_key, new_base_url, new_proxy_enabled, new_proxy_url))
+                """, (new_method, new_api_key, new_base_url, new_capsolver_key, new_capsolver_url))
             else:
                 new_method = captcha_method if captcha_method is not None else "yescaptcha"
                 new_api_key = yescaptcha_api_key if yescaptcha_api_key is not None else ""
                 new_base_url = yescaptcha_base_url if yescaptcha_base_url is not None else "https://api.yescaptcha.com"
-                new_proxy_enabled = browser_proxy_enabled if browser_proxy_enabled is not None else False
-                new_proxy_url = browser_proxy_url
+                new_capsolver_key = capsolver_api_key if capsolver_api_key is not None else ""
+                new_capsolver_url = capsolver_base_url if capsolver_base_url is not None else "https://api.capsolver.com"
 
                 await db.execute("""
-                    INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, browser_proxy_enabled, browser_proxy_url)
+                    INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, capsolver_api_key, capsolver_base_url)
                     VALUES (1, ?, ?, ?, ?, ?)
-                """, (new_method, new_api_key, new_base_url, new_proxy_enabled, new_proxy_url))
+                """, (new_method, new_api_key, new_base_url, new_capsolver_key, new_capsolver_url))
 
             await db.commit()
 

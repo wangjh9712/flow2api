@@ -559,8 +559,67 @@ class FlowClient:
         return str(uuid.uuid4())
 
     async def _get_recaptcha_token(self, project_id: str) -> Optional[str]:
-        """获取reCAPTCHA token - 支持两种方式"""
+        """获取reCAPTCHA token - 支持多种方式"""
+        
+        # CapSolver
+        if config.captcha_method == "capsolver":
+            client_key = config.capsolver_api_key
+            if not client_key:
+                debug_logger.log_info("[reCAPTCHA] CapSolver API key not configured")
+                return None
+            
+            website_key = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
+            website_url = f"https://labs.google/fx/tools/flow/project/{project_id}"
+            base_url = config.capsolver_base_url
+            page_action = "FLOW_GENERATION"
+            
+            try:
+                async with AsyncSession() as session:
+                    create_url = f"{base_url}/createTask"
+                    create_data = {
+                        "clientKey": client_key,
+                        "task": {
+                            "type": "ReCaptchaV3EnterpriseTaskProxyLess",
+                            "websiteURL": website_url,
+                            "websiteKey": website_key,
+                            "pageAction": page_action
+                        }
+                    }
+                    
+                    result = await session.post(create_url, json=create_data, impersonate="chrome110")
+                    result_json = result.json()
+                    task_id = result_json.get('taskId')
+                    
+                    debug_logger.log_info(f"[reCAPTCHA] CapSolver created task_id: {task_id}")
+                    
+                    if not task_id:
+                        return None
+                    
+                    get_url = f"{base_url}/getTaskResult"
+                    for i in range(40):
+                        get_data = {
+                            "clientKey": client_key,
+                            "taskId": task_id
+                        }
+                        result = await session.post(get_url, json=get_data, impersonate="chrome110")
+                        result_json = result.json()
+                        
+                        debug_logger.log_info(f"[reCAPTCHA] CapSolver polling #{i+1}: {result_json}")
+                        
+                        status = result_json.get('status')
+                        if status == 'ready':
+                            return result_json.get('solution', {}).get('gRecaptchaResponse')
+                        
+                        if status == 'failed':
+                            return None
+                            
+                        time.sleep(1)
+                    return None
+            except Exception as e:
+                debug_logger.log_error(f"[reCAPTCHA] CapSolver error: {str(e)}")
+                return None
 
+        # Yescaptcha
         client_key = config.yescaptcha_api_key
         if not client_key:
             debug_logger.log_info("[reCAPTCHA] API key not configured, skipping")

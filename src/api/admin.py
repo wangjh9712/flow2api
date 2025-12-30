@@ -835,27 +835,19 @@ async def update_captcha_config(
     request: dict,
     token: str = Depends(verify_admin_token)
 ):
-    """Update captcha configuration"""
-    from ..services.browser_captcha import validate_browser_proxy_url
 
     captcha_method = request.get("captcha_method")
     yescaptcha_api_key = request.get("yescaptcha_api_key")
     yescaptcha_base_url = request.get("yescaptcha_base_url")
-    browser_proxy_enabled = request.get("browser_proxy_enabled", False)
-    browser_proxy_url = request.get("browser_proxy_url", "")
-
-    # 验证浏览器代理URL格式
-    if browser_proxy_enabled and browser_proxy_url:
-        is_valid, error_msg = validate_browser_proxy_url(browser_proxy_url)
-        if not is_valid:
-            return {"success": False, "message": error_msg}
+    capsolver_api_key = request.get("capsolver_api_key")
+    capsolver_base_url = request.get("capsolver_base_url")
 
     await db.update_captcha_config(
         captcha_method=captcha_method,
         yescaptcha_api_key=yescaptcha_api_key,
         yescaptcha_base_url=yescaptcha_base_url,
-        browser_proxy_enabled=browser_proxy_enabled,
-        browser_proxy_url=browser_proxy_url if browser_proxy_enabled else None
+        capsolver_api_key=capsolver_api_key,
+        capsolver_base_url=capsolver_base_url
     )
 
     # 🔥 Hot reload: sync database config to memory
@@ -872,8 +864,8 @@ async def get_captcha_config(token: str = Depends(verify_admin_token)):
         "captcha_method": captcha_config.captcha_method,
         "yescaptcha_api_key": captcha_config.yescaptcha_api_key,
         "yescaptcha_base_url": captcha_config.yescaptcha_base_url,
-        "browser_proxy_enabled": captcha_config.browser_proxy_enabled,
-        "browser_proxy_url": captcha_config.browser_proxy_url or ""
+        "capsolver_api_key": captcha_config.capsolver_api_key,
+        "capsolver_base_url": captcha_config.capsolver_base_url
     }
 
 
