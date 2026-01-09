@@ -120,6 +120,14 @@ async def create_chat_completion(
                             image_base64 = match.group(1)
                             image_bytes = base64.b64decode(image_base64)
                             images.append(image_bytes)
+                    elif image_url:
+                        # 尝试下载或读取本地缓存
+                        image_data = await retrieve_image_data(image_url)
+                        if image_data:
+                            images.append(image_data)
+                            debug_logger.log_info(f"[REQUEST] 成功加载参考图 URL: {image_url}")
+                        else:
+                            debug_logger.log_warning(f"[REQUEST] 加载参考图失败: {image_url}")
 
         # Fallback to deprecated image parameter
         if request.image and not images:
