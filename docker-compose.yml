@@ -1,7 +1,6 @@
 services:
   flow2api:
     build: .
-    image: flow2api
     container_name: flow2api
     ports:
       - "31800:8000"
